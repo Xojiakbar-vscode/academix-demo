@@ -1,0 +1,1351 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="viewport-fit=cover">
+    <title>Academic Journal Management System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #2563eb;
+            --secondary: #7c3aed;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .sidebar {
+            transition: all 0.3s ease;
+        }
+        
+        .article-card {
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        
+        .article-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+        
+        .chat-bubble {
+            max-width: 80%;
+            border-radius: 18px;
+            padding: 12px 16px;
+            margin-bottom: 8px;
+        }
+        
+        .chat-bubble.user {
+            background-color: #3b82f6;
+            color: white;
+            margin-left: auto;
+            border-bottom-right-radius: 4px;
+        }
+        
+        .chat-bubble.editor {
+            background-color: #e5e7eb;
+            color: #1f2937;
+            margin-right: auto;
+            border-bottom-left-radius: 4px;
+        }
+        
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .status-pending {
+            background-color: #fef3c7;
+            color: #d97706;
+        }
+        
+        .status-under-review {
+            background-color: #dbeafe;
+            color: #2563eb;
+        }
+        
+        .status-revisions {
+            background-color: #fef3c7;
+            color: #d97706;
+        }
+        
+        .status-accepted {
+            background-color: #d1fae5;
+            color: #059669;
+        }
+        
+        .status-rejected {
+            background-color: #fee2e2;
+            color: #dc2626;
+        }
+        
+        .tab-active {
+            border-bottom: 3px solid #2563eb;
+            color: #2563eb;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div id="root" class="min-h-screen">
+        <!-- Asosiy kontent React komponentlari bilan to'ldiriladi -->
+    </div>
+
+    <!-- React va ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <script type="text/babel">
+        // 1. Foydalanuvchi maqola yuborish komponenti
+        function UserSubmitArticle() {
+            const [formData, setFormData] = React.useState({
+                title: "",
+                abstract: "",
+                keywords: "",
+                mainAuthor: { name: "", email: "", affiliation: "", orcid: "" },
+                coAuthors: [{ name: "", email: "", affiliation: "", orcid: "" }],
+                journal: "education",
+                articleFile: null,
+                coverLetter: "",
+                agreeTerms: false
+            });
+            
+            const [submitted, setSubmitted] = React.useState(false);
+            const [errors, setErrors] = React.useState({});
+            
+            const journals = [
+                { id: "education", name: "Journal of Education", url: "/education" },
+                { id: "science", name: "Journal of Science", url: "/science" },
+                { id: "technology", name: "Journal of Technology", url: "/technology" },
+                { id: "medicine", name: "Medical Research Journal", url: "/medicine" }
+            ];
+            
+            const handleChange = (e) => {
+                const { name, value, type, checked, files } = e.target;
+                
+                if (type === 'file') {
+                    setFormData(prev => ({ ...prev, [name]: files[0] }));
+                } else if (type === 'checkbox') {
+                    setFormData(prev => ({ ...prev, [name]: checked }));
+                } else if (name.startsWith("mainAuthor.")) {
+                    const field = name.split(".")[1];
+                    setFormData(prev => ({
+                        ...prev,
+                        mainAuthor: { ...prev.mainAuthor, [field]: value }
+                    }));
+                } else {
+                    setFormData(prev => ({ ...prev, [name]: value }));
+                }
+                
+                // Xatoni tozalash
+                if (errors[name]) {
+                    setErrors(prev => ({ ...prev, [name]: "" }));
+                }
+            };
+            
+            const handleCoAuthorChange = (index, field, value) => {
+                const updatedCoAuthors = [...formData.coAuthors];
+                updatedCoAuthors[index][field] = value;
+                setFormData(prev => ({ ...prev, coAuthors: updatedCoAuthors }));
+            };
+            
+            const addCoAuthor = () => {
+                setFormData(prev => ({
+                    ...prev,
+                    coAuthors: [...prev.coAuthors, { name: "", email: "", affiliation: "", orcid: "" }]
+                }));
+            };
+            
+            const removeCoAuthor = (index) => {
+                if (formData.coAuthors.length > 1) {
+                    const updatedCoAuthors = formData.coAuthors.filter((_, i) => i !== index);
+                    setFormData(prev => ({ ...prev, coAuthors: updatedCoAuthors }));
+                }
+            };
+            
+            const validateORCID = (orcid) => {
+                // ORCID validatsiyasi (soddalashtirilgan)
+                if (!orcid) return true;
+                const orcidRegex = /^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$/;
+                return orcidRegex.test(orcid);
+            };
+            
+            const validateForm = () => {
+                const newErrors = {};
+                
+                if (!formData.title.trim()) newErrors.title = "Maqola sarlavhasini kiriting";
+                if (!formData.abstract.trim()) newErrors.abstract = "Annotatsiyani kiriting";
+                if (!formData.keywords.trim()) newErrors.keywords = "Kalit so'zlarni kiriting";
+                if (!formData.mainAuthor.name.trim()) newErrors["mainAuthor.name"] = "Asosiy muallif ismini kiriting";
+                if (!formData.mainAuthor.email.trim()) newErrors["mainAuthor.email"] = "Asosiy muallif emailini kiriting";
+                if (!formData.mainAuthor.affiliation.trim()) newErrors["mainAuthor.affiliation"] = "Asosiy muallif muassasasini kiriting";
+                
+                // ORCID validatsiyasi
+                if (!validateORCID(formData.mainAuthor.orcid)) {
+                    newErrors["mainAuthor.orcid"] = "Noto'g'ri ORCID formati (XXXX-XXXX-XXXX-XXX)";
+                }
+                
+                // Hamkor mualliflar validatsiyasi
+                formData.coAuthors.forEach((author, index) => {
+                    if (author.name.trim() && !author.email.trim()) {
+                        newErrors[`coAuthorEmail${index}`] = `${author.name} uchun email kiriting`;
+                    }
+                    if (author.orcid && !validateORCID(author.orcid)) {
+                        newErrors[`coAuthorORCID${index}`] = `${author.name} uchun noto'g'ri ORCID formati`;
+                    }
+                });
+                
+                if (!formData.agreeTerms) newErrors.agreeTerms = "Shartlarga rozilik bildirishingiz kerak";
+                
+                setErrors(newErrors);
+                return Object.keys(newErrors).length === 0;
+            };
+            
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                
+                if (validateForm()) {
+                    console.log("Maqola yuborildi:", formData);
+                    setSubmitted(true);
+                    
+                    // Formani tozalash
+                    setTimeout(() => {
+                        setFormData({
+                            title: "",
+                            abstract: "",
+                            keywords: "",
+                            mainAuthor: { name: "", email: "", affiliation: "", orcid: "" },
+                            coAuthors: [{ name: "", email: "", affiliation: "", orcid: "" }],
+                            journal: "education",
+                            articleFile: null,
+                            coverLetter: "",
+                            agreeTerms: false
+                        });
+                        setSubmitted(false);
+                    }, 3000);
+                }
+            };
+            
+            return (
+                <div className="max-w-6xl mx-auto p-6">
+                    {/* Sarlavha */}
+                    <div className="mb-8 text-center">
+                        <h1 className="text-3xl font-bold text-gray-800 mb-2">Maqola Yuborish</h1>
+                        <p className="text-gray-600">Ilmiy maqolangizni jurnalimizga yuboring. Maqola Google Scholar standartlariga mos kelishi kerak.</p>
+                    </div>
+                    
+                    {/* Ogohlantirish */}
+                    {submitted && (
+                        <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+                            <div className="flex items-center">
+                                <i className="fas fa-check-circle text-green-500 mr-3 text-xl"></i>
+                                <div>
+                                    <h3 className="font-semibold text-green-800">Maqola muvaffaqiyatli yuborildi!</h3>
+                                    <p className="text-green-700 text-sm">Maqolangiz ko'rib chiqish uchun qabul qilindi. Holati haqida email orqali xabar beriladi.</p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    
+                    <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-lg p-6 md:p-8">
+                        {/* Maqola ma'lumotlari */}
+                        <div className="mb-10">
+                            <h2 className="text-xl font-semibold text-gray-800 mb-6 pb-2 border-b">Maqola ma'lumotlari</h2>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {/* Jurnal tanlash */}
+                                <div className="md:col-span-2">
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Jurnalni tanlang <span className="text-red-500">*</span>
+                                    </label>
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                        {journals.map(journal => (
+                                            <div key={journal.id} className="relative">
+                                                <input 
+                                                    type="radio" 
+                                                    id={journal.id}
+                                                    name="journal"
+                                                    value={journal.id}
+                                                    checked={formData.journal === journal.id}
+                                                    onChange={handleChange}
+                                                    className="sr-only"
+                                                />
+                                                <label 
+                                                    htmlFor={journal.id}
+                                                    className={`flex flex-col items-center justify-center p-4 border-2 rounded-lg cursor-pointer transition-all ${formData.journal === journal.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}
+                                                >
+                                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center mb-2 ${formData.journal === journal.id ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-500'}`}>
+                                                        <i className="fas fa-book-open"></i>
+                                                    </div>
+                                                    <span className={`text-sm font-medium ${formData.journal === journal.id ? 'text-blue-700' : 'text-gray-700'}`}>
+                                                        {journal.name}
+                                                    </span>
+                                                </label>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                
+                                {/* Sarlavha */}
+                                <div className="md:col-span-2">
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Maqola sarlavhasi <span className="text-red-500">*</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        name="title"
+                                        value={formData.title}
+                                        onChange={handleChange}
+                                        className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.title ? 'border-red-500' : 'border-gray-300'}`}
+                                        placeholder="Maqolaning to'liq sarlavhasini kiriting"
+                                    />
+                                    {errors.title && <p className="mt-1 text-sm text-red-600">{errors.title}</p>}
+                                </div>
+                                
+                                {/* Annotatsiya */}
+                                <div className="md:col-span-2">
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Annotatsiya (Abstract) <span className="text-red-500">*</span>
+                                    </label>
+                                    <textarea
+                                        name="abstract"
+                                        value={formData.abstract}
+                                        onChange={handleChange}
+                                        rows="4"
+                                        className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.abstract ? 'border-red-500' : 'border-gray-300'}`}
+                                        placeholder="Maqola annotatsiyasini kiriting (250-300 so'z)"
+                                    />
+                                    {errors.abstract && <p className="mt-1 text-sm text-red-600">{errors.abstract}</p>}
+                                    <p className="mt-1 text-xs text-gray-500">Iltimos, maqolaning asosiy maqsadi, metodologiyasi va natijalarini qisqacha bayon eting.</p>
+                                </div>
+                                
+                                {/* Kalit so'zlar */}
+                                <div className="md:col-span-2">
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Kalit so'zlar <span className="text-red-500">*</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        name="keywords"
+                                        value={formData.keywords}
+                                        onChange={handleChange}
+                                        className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.keywords ? 'border-red-500' : 'border-gray-300'}`}
+                                        placeholder="Kalit so'zlarni vergul bilan ajrating (masalan: ta'lim, metodika, innovatsiya)"
+                                    />
+                                    {errors.keywords && <p className="mt-1 text-sm text-red-600">{errors.keywords}</p>}
+                                    <p className="mt-1 text-xs text-gray-500">Eng kamida 3, eng ko'pi 8 ta kalit so'z kiriting.</p>
+                                </div>
+                                
+                                {/* Fayl yuklash */}
+                                <div className="md:col-span-2">
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Maqola fayli <span className="text-red-500">*</span>
+                                    </label>
+                                    <div className={`border-2 border-dashed rounded-lg p-6 text-center ${errors.articleFile ? 'border-red-500 bg-red-50' : 'border-gray-300 hover:border-gray-400'}`}>
+                                        <div className="flex flex-col items-center">
+                                            <i className="fas fa-file-upload text-3xl text-gray-400 mb-3"></i>
+                                            <p className="text-sm text-gray-600 mb-2">PDF, DOC yoki DOCX formatidagi faylni yuklang</p>
+                                            <label className="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-6 rounded-lg transition-colors">
+                                                Fayl tanlash
+                                                <input 
+                                                    type="file" 
+                                                    name="articleFile"
+                                                    onChange={handleChange}
+                                                    className="hidden" 
+                                                    accept=".pdf,.doc,.docx"
+                                                />
+                                            </label>
+                                            <p className="mt-3 text-xs text-gray-500">Maksimal hajm: 10MB</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                {/* Cover letter */}
+                                <div className="md:col-span-2">
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Qo'shimcha izoh (Cover letter)
+                                    </label>
+                                    <textarea
+                                        name="coverLetter"
+                                        value={formData.coverLetter}
+                                        onChange={handleChange}
+                                        rows="4"
+                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        placeholder="Maqola haqida qo'shimcha izoh, muharrirga murojaat yoki boshqa kerakli ma'lumotlar"
+                                    />
+                                    <p className="mt-1 text-xs text-gray-500">Majburiy emas, lekin tavsiya etiladi.</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        {/* Mualliflar ma'lumotlari */}
+                        <div className="mb-10">
+                            <h2 className="text-xl font-semibold text-gray-800 mb-6 pb-2 border-b">Mualliflar ma'lumotlari</h2>
+                            
+                            {/* Asosiy muallif */}
+                            <div className="mb-8 p-4 bg-blue-50 rounded-lg">
+                                <h3 className="font-medium text-blue-800 mb-4">Asosiy muallif (Corresponding author) <span className="text-red-500">*</span></h3>
+                                
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Ism Familiya</label>
+                                        <input
+                                            type="text"
+                                            name="mainAuthor.name"
+                                            value={formData.mainAuthor.name}
+                                            onChange={handleChange}
+                                            className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors["mainAuthor.name"] ? 'border-red-500' : 'border-gray-300'}`}
+                                            placeholder="Ism Familiya"
+                                        />
+                                        {errors["mainAuthor.name"] && <p className="mt-1 text-sm text-red-600">{errors["mainAuthor.name"]}</p>}
+                                    </div>
+                                    
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                                        <input
+                                            type="email"
+                                            name="mainAuthor.email"
+                                            value={formData.mainAuthor.email}
+                                            onChange={handleChange}
+                                            className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors["mainAuthor.email"] ? 'border-red-500' : 'border-gray-300'}`}
+                                            placeholder="email@example.com"
+                                        />
+                                        {errors["mainAuthor.email"] && <p className="mt-1 text-sm text-red-600">{errors["mainAuthor.email"]}</p>}
+                                    </div>
+                                    
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Muassasa/Affiliatsiya</label>
+                                        <input
+                                            type="text"
+                                            name="mainAuthor.affiliation"
+                                            value={formData.mainAuthor.affiliation}
+                                            onChange={handleChange}
+                                            className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors["mainAuthor.affiliation"] ? 'border-red-500' : 'border-gray-300'}`}
+                                            placeholder="Universitet, fakultet, kafedra"
+                                        />
+                                        {errors["mainAuthor.affiliation"] && <p className="mt-1 text-sm text-red-600">{errors["mainAuthor.affiliation"]}</p>}
+                                    </div>
+                                    
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">ORCID ID</label>
+                                        <input
+                                            type="text"
+                                            name="mainAuthor.orcid"
+                                            value={formData.mainAuthor.orcid}
+                                            onChange={handleChange}
+                                            className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors["mainAuthor.orcid"] ? 'border-red-500' : 'border-gray-300'}`}
+                                            placeholder="XXXX-XXXX-XXXX-XXX"
+                                        />
+                                        {errors["mainAuthor.orcid"] && <p className="mt-1 text-sm text-red-600">{errors["mainAuthor.orcid"]}</p>}
+                                        <p className="mt-1 text-xs text-gray-500">Majburiy emas, lekin tavsiya etiladi</p>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            {/* Hamkor mualliflar */}
+                            <div>
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className="font-medium text-gray-800">Hamkor mualliflar</h3>
+                                    <button 
+                                        type="button"
+                                        onClick={addCoAuthor}
+                                        className="flex items-center text-blue-600 hover:text-blue-800"
+                                    >
+                                        <i className="fas fa-plus mr-2"></i>
+                                        Hamkor muallif qo'shish
+                                    </button>
+                                </div>
+                                
+                                {formData.coAuthors.map((author, index) => (
+                                    <div key={index} className="mb-6 p-4 border border-gray-200 rounded-lg">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <h4 className="font-medium text-gray-700">Hamkor muallif #{index + 1}</h4>
+                                            {formData.coAuthors.length > 1 && (
+                                                <button 
+                                                    type="button"
+                                                    onClick={() => removeCoAuthor(index)}
+                                                    className="text-red-500 hover:text-red-700"
+                                                >
+                                                    <i className="fas fa-trash-alt"></i>
+                                                </button>
+                                            )}
+                                        </div>
+                                        
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-2">Ism Familiya</label>
+                                                <input
+                                                    type="text"
+                                                    value={author.name}
+                                                    onChange={(e) => handleCoAuthorChange(index, "name", e.target.value)}
+                                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                    placeholder="Ism Familiya"
+                                                />
+                                            </div>
+                                            
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                                                <input
+                                                    type="email"
+                                                    value={author.email}
+                                                    onChange={(e) => handleCoAuthorChange(index, "email", e.target.value)}
+                                                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors[`coAuthorEmail${index}`] ? 'border-red-500' : 'border-gray-300'}`}
+                                                    placeholder="email@example.com"
+                                                />
+                                                {errors[`coAuthorEmail${index}`] && <p className="mt-1 text-sm text-red-600">{errors[`coAuthorEmail${index}`]}</p>}
+                                            </div>
+                                            
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-2">Muassasa/Affiliatsiya</label>
+                                                <input
+                                                    type="text"
+                                                    value={author.affiliation}
+                                                    onChange={(e) => handleCoAuthorChange(index, "affiliation", e.target.value)}
+                                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                    placeholder="Universitet, fakultet, kafedra"
+                                                />
+                                            </div>
+                                            
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-2">ORCID ID</label>
+                                                <input
+                                                    type="text"
+                                                    value={author.orcid}
+                                                    onChange={(e) => handleCoAuthorChange(index, "orcid", e.target.value)}
+                                                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors[`coAuthorORCID${index}`] ? 'border-red-500' : 'border-gray-300'}`}
+                                                    placeholder="XXXX-XXXX-XXXX-XXX"
+                                                />
+                                                {errors[`coAuthorORCID${index}`] && <p className="mt-1 text-sm text-red-600">{errors[`coAuthorORCID${index}`]}</p>}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        
+                        {/* Rozilik va yuborish */}
+                        <div className="border-t pt-6">
+                            <div className="mb-6">
+                                <div className="flex items-start">
+                                    <input
+                                        type="checkbox"
+                                        id="agreeTerms"
+                                        name="agreeTerms"
+                                        checked={formData.agreeTerms}
+                                        onChange={handleChange}
+                                        className="mt-1 mr-3"
+                                    />
+                                    <label htmlFor="agreeTerms" className="text-sm text-gray-700">
+                                        Men ushbu maqolani avval hech qayerda nashr etilmaganligini va boshqa jurnallarga bir vaqtning o'zida yuborilmaganligini tasdiqlayman. Shuningdek, maqoladagi barcha ma'lumotlar haqiqiyligini va mualliflik huquqi buzilmasligini kafalatlayman.
+                                        <span className="text-red-500"> *</span>
+                                    </label>
+                                </div>
+                                {errors.agreeTerms && <p className="mt-1 text-sm text-red-600">{errors.agreeTerms}</p>}
+                            </div>
+                            
+                            <div className="flex flex-col md:flex-row justify-between items-center">
+                                <div className="mb-4 md:mb-0">
+                                    <p className="text-sm text-gray-600">
+                                        <i className="fas fa-info-circle mr-2"></i>
+                                        Maqola yuborilgach, sizga tasdiqlash emaili yuboriladi. Maqola holati haqida profilingiz orqali kuzatishingiz mumkin.
+                                    </p>
+                                </div>
+                                
+                                <button
+                                    type="submit"
+                                    className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-8 rounded-lg transition-colors flex items-center"
+                                >
+                                    <i className="fas fa-paper-plane mr-2"></i>
+                                    Maqolani yuborish
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            );
+        }
+
+        // 2. Admin paneli komponenti
+        function AdminPanel() {
+            const [activeTab, setActiveTab] = React.useState("pending");
+            const [selectedArticle, setSelectedArticle] = React.useState(null);
+            
+            // Statik maqolalar ma'lumotlari
+            const articles = {
+                pending: [
+                    { id: 1, title: "Ta'limda sun'iy intellektning roli", author: "Aziz Alimov", journal: "Journal of Education", submitted: "2023-10-15", status: "pending" },
+                    { id: 2, title: "Matematik modellashtirish metodologiyasi", author: "Dilnoza Qodirova", journal: "Journal of Science", submitted: "2023-10-14", status: "pending" },
+                    { id: 3, title: "Tibbiy tadqiqotlarda statistik tahlil", author: "Sarvar Ismoilov", journal: "Medical Research Journal", submitted: "2023-10-12", status: "pending" }
+                ],
+                underReview: [
+                    { id: 4, title: "Innovatsion pedagogik texnologiyalar", author: "Maftuna Karimova", journal: "Journal of Education", submitted: "2023-10-10", status: "under_review", reviewer: "Olim Olimov" },
+                    { id: 5, title: "Kvant hisoblash asoslari", author: "Javohir Siddiqov", journal: "Journal of Technology", submitted: "2023-10-08", status: "under_review", reviewer: "Laylo Toshpulatova" }
+                ],
+                revisions: [
+                    { id: 6, title: "IoT texnologiyalarining qishloq xo'jaligida qo'llanilishi", author: "Bobur Rahimov", journal: "Journal of Technology", submitted: "2023-10-05", status: "revisions", revisionCount: 2, reviewer: "Dilshod Yusupov" },
+                    { id: 7, title: "Adabiyotshunoslikda yangi yo'nalishlar", author: "Fotima Nuriddinova", journal: "Journal of Education", submitted: "2023-10-03", status: "revisions", revisionCount: 1, reviewer: "Muhammadali Ergashev" }
+                ],
+                accepted: [
+                    { id: 8, title: "Muhandislikda yangi materiallar", author: "Shohruh Boltayev", journal: "Journal of Technology", submitted: "2023-09-28", status: "accepted" },
+                    { id: 9, title: "Biologik xilma-xillikni himoya qilish", author: "Sevara Xolmirzayeva", journal: "Journal of Science", submitted: "2023-09-25", status: "accepted" }
+                ],
+                rejected: [
+                    { id: 10, title: "Falsafiy qarashlar tahlili", author: "Jamshid Qurbonov", journal: "Journal of Education", submitted: "2023-09-20", status: "rejected", reason: "Mavzu jurnal profiliga mos kelmaydi" }
+                ]
+            };
+            
+            const reviewers = [
+                { id: 1, name: "Olim Olimov", specialization: "Pedagogika", availability: "Mavjud" },
+                { id: 2, name: "Laylo Toshpulatova", specialization: "Texnologiya", availability: "Mavjud" },
+                { id: 3, name: "Dilshod Yusupov", specialization: "Qishloq xo'jaligi", availability: "Band" },
+                { id: 4, name: "Muhammadali Ergashev", specialization: "Adabiyotshunoslik", availability: "Mavjud" },
+                { id: 5, name: "Nigora Abdullayeva", specialization: "Tibbiyot", availability: "Mavjud" }
+            ];
+            
+            const handleAssignReviewer = (articleId, reviewerId) => {
+                console.log(`Maqola ${articleId} ga ${reviewerId} IDli redaktor tayinlandi`);
+                // Bu yerda backendga so'rov yuboriladi
+                alert(`Redaktor tayinlandi! Maqola endi ko'rib chiqilmoqda.`);
+            };
+            
+            const handleRejectArticle = (articleId) => {
+                console.log(`Maqola ${articleId} rad etildi`);
+                alert(`Maqola rad etildi. Muallifga xabar yuborildi.`);
+            };
+            
+            const getStatusBadge = (status) => {
+                switch(status) {
+                    case "pending": return <span className="status-badge status-pending">Kutilmoqda</span>;
+                    case "under_review": return <span className="status-badge status-under-review">Ko'rib chiqilmoqda</span>;
+                    case "revisions": return <span className="status-badge status-revisions">Tahrirlash kerak</span>;
+                    case "accepted": return <span className="status-badge status-accepted">Qabul qilindi</span>;
+                    case "rejected": return <span className="status-badge status-rejected">Rad etildi</span>;
+                    default: return <span className="status-badge">Noma'lum</span>;
+                }
+            };
+            
+            return (
+                <div className="min-h-screen bg-gray-50">
+                    {/* Sidebar */}
+                    <div className="flex">
+                        <div className="sidebar w-64 bg-white shadow-lg min-h-screen">
+                            <div className="p-6">
+                                <h1 className="text-2xl font-bold text-gray-800 mb-2">Admin Panel</h1>
+                                <p className="text-gray-600 text-sm">Journal of Education</p>
+                            </div>
+                            
+                            <nav className="mt-6">
+                                <a href="#" className="flex items-center px-6 py-3 text-blue-600 bg-blue-50 border-r-4 border-blue-500">
+                                    <i className="fas fa-newspaper mr-3"></i>
+                                    Maqolalar boshqaruvi
+                                </a>
+                                <a href="#" className="flex items-center px-6 py-3 text-gray-700 hover:bg-gray-100">
+                                    <i className="fas fa-users mr-3"></i>
+                                    Foydalanuvchilar
+                                </a>
+                                <a href="#" className="flex items-center px-6 py-3 text-gray-700 hover:bg-gray-100">
+                                    <i className="fas fa-user-tie mr-3"></i>
+                                    Redaktorlar
+                                </a>
+                                <a href="#" className="flex items-center px-6 py-3 text-gray-700 hover:bg-gray-100">
+                                    <i className="fas fa-cog mr-3"></i>
+                                    Sozlamalar
+                                </a>
+                                <a href="#" className="flex items-center px-6 py-3 text-gray-700 hover:bg-gray-100">
+                                    <i className="fas fa-chart-bar mr-3"></i>
+                                    Statistika
+                                </a>
+                            </nav>
+                            
+                            <div className="absolute bottom-0 w-64 p-6 border-t">
+                                <div className="flex items-center">
+                                    <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center mr-3">
+                                        <i className="fas fa-user text-blue-600"></i>
+                                    </div>
+                                    <div>
+                                        <p className="font-medium text-gray-800">Admin User</p>
+                                        <p className="text-xs text-gray-500">Super Admin</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        {/* Asosiy kontent */}
+                        <div className="flex-1 p-8">
+                            <div className="mb-8">
+                                <h2 className="text-3xl font-bold text-gray-800">Maqolalar boshqaruvi</h2>
+                                <p className="text-gray-600">Jurnalga yuborilgan maqolalarni ko'rib chiqing va boshqaring</p>
+                            </div>
+                            
+                            {/* Tablar */}
+                            <div className="mb-8 border-b">
+                                <div className="flex space-x-8">
+                                    {[
+                                        { id: "pending", label: "Kutilmoqda", count: articles.pending.length },
+                                        { id: "underReview", label: "Ko'rib chiqilmoqda", count: articles.underReview.length },
+                                        { id: "revisions", label: "Tahrirlash kerak", count: articles.revisions.length },
+                                        { id: "accepted", label: "Qabul qilingan", count: articles.accepted.length },
+                                        { id: "rejected", label: "Rad etilgan", count: articles.rejected.length }
+                                    ].map(tab => (
+                                        <button
+                                            key={tab.id}
+                                            onClick={() => setActiveTab(tab.id)}
+                                            className={`pb-3 px-1 text-gray-600 hover:text-gray-900 ${activeTab === tab.id ? 'tab-active' : ''}`}
+                                        >
+                                            {tab.label}
+                                            <span className={`ml-2 px-2 py-1 text-xs rounded-full ${activeTab === tab.id ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}`}>
+                                                {tab.count}
+                                            </span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            
+                            {/* Maqolalar ro'yxati */}
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                                <div className={`lg:col-span-${selectedArticle ? '2' : '3'}`}>
+                                    <div className="bg-white rounded-xl shadow-md overflow-hidden">
+                                        <div className="p-6">
+                                            <h3 className="text-lg font-semibold text-gray-800 mb-4">
+                                                {activeTab === "pending" && "Ko'rib chiqish kutilayotgan maqolalar"}
+                                                {activeTab === "underReview" && "Ko'rib chiqilayotgan maqolalar"}
+                                                {activeTab === "revisions" && "Tahrirlash talab qilingan maqolalar"}
+                                                {activeTab === "accepted" && "Qabul qilingan maqolalar"}
+                                                {activeTab === "rejected" && "Rad etilgan maqolalar"}
+                                            </h3>
+                                            
+                                            <div className="space-y-4">
+                                                {articles[activeTab === "underReview" ? "underReview" : 
+                                                         activeTab === "revisions" ? "revisions" :
+                                                         activeTab === "accepted" ? "accepted" :
+                                                         activeTab === "rejected" ? "rejected" : "pending"].map(article => (
+                                                    <div 
+                                                        key={article.id} 
+                                                        className={`article-card p-4 border rounded-lg cursor-pointer hover:border-blue-300 ${selectedArticle?.id === article.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200'}`}
+                                                        onClick={() => setSelectedArticle(article)}
+                                                    >
+                                                        <div className="flex justify-between items-start">
+                                                            <div>
+                                                                <h4 className="font-medium text-gray-800 mb-1">{article.title}</h4>
+                                                                <p className="text-sm text-gray-600 mb-2">Muallif: {article.author} | {article.journal}</p>
+                                                                <div className="flex items-center">
+                                                                    {getStatusBadge(article.status)}
+                                                                    <span className="text-xs text-gray-500 ml-3">Yuborilgan: {article.submitted}</span>
+                                                                    {article.revisionCount && (
+                                                                        <span className="text-xs text-amber-600 ml-3">{article.revisionCount} marta tahrirlash</span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex space-x-2">
+                                                                <button className="text-blue-600 hover:text-blue-800 p-1">
+                                                                    <i className="fas fa-eye"></i>
+                                                                </button>
+                                                                <button className="text-gray-600 hover:text-gray-800 p-1">
+                                                                    <i className="fas fa-download"></i>
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Redaktorlar ro'yxati (faqat kutilmoqda yoki ko'rib chiqilmoqda bo'lsa) */}
+                                    {(activeTab === "pending" || activeTab === "underReview") && (
+                                        <div className="mt-8 bg-white rounded-xl shadow-md p-6">
+                                            <h3 className="text-lg font-semibold text-gray-800 mb-4">Mavjud Redaktorlar</h3>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                {reviewers.map(reviewer => (
+                                                    <div key={reviewer.id} className="border border-gray-200 rounded-lg p-4">
+                                                        <div className="flex justify-between items-start">
+                                                            <div>
+                                                                <h4 className="font-medium text-gray-800">{reviewer.name}</h4>
+                                                                <p className="text-sm text-gray-600 mb-2">{reviewer.specialization}</p>
+                                                                <span className={`text-xs px-2 py-1 rounded ${reviewer.availability === 'Mavjud' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                                                    {reviewer.availability}
+                                                                </span>
+                                                            </div>
+                                                            {activeTab === "pending" && selectedArticle && (
+                                                                <button 
+                                                                    onClick={() => handleAssignReviewer(selectedArticle.id, reviewer.id)}
+                                                                    className="bg-blue-600 hover:bg-blue-700 text-white text-sm py-2 px-4 rounded-lg"
+                                                                >
+                                                                    Tayinlash
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                                
+                                {/* Tanlangan maqola ma'lumotlari */}
+                                {selectedArticle && (
+                                    <div className="lg:col-span-1">
+                                        <div className="bg-white rounded-xl shadow-md p-6 sticky top-8">
+                                            <div className="flex justify-between items-start mb-6">
+                                                <h3 className="text-xl font-semibold text-gray-800">Maqola ma'lumotlari</h3>
+                                                <button 
+                                                    onClick={() => setSelectedArticle(null)}
+                                                    className="text-gray-500 hover:text-gray-700"
+                                                >
+                                                    <i className="fas fa-times"></i>
+                                                </button>
+                                            </div>
+                                            
+                                            <div className="mb-6">
+                                                <h4 className="font-medium text-gray-700 mb-2">Sarlavha</h4>
+                                                <p className="text-gray-800 mb-4">{selectedArticle.title}</p>
+                                                
+                                                <div className="grid grid-cols-2 gap-4 mb-4">
+                                                    <div>
+                                                        <h4 className="font-medium text-gray-700 mb-1">Muallif</h4>
+                                                        <p className="text-gray-800">{selectedArticle.author}</p>
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="font-medium text-gray-700 mb-1">Jurnal</h4>
+                                                        <p className="text-gray-800">{selectedArticle.journal}</p>
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="font-medium text-gray-700 mb-1">Yuborilgan sana</h4>
+                                                        <p className="text-gray-800">{selectedArticle.submitted}</p>
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="font-medium text-gray-700 mb-1">Holati</h4>
+                                                        {getStatusBadge(selectedArticle.status)}
+                                                    </div>
+                                                </div>
+                                                
+                                                {selectedArticle.reviewer && (
+                                                    <div className="mb-4">
+                                                        <h4 className="font-medium text-gray-700 mb-1">Redaktor</h4>
+                                                        <p className="text-gray-800">{selectedArticle.reviewer}</p>
+                                                    </div>
+                                                )}
+                                                
+                                                {selectedArticle.reason && (
+                                                    <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                                                        <h4 className="font-medium text-red-700 mb-1">Rad etish sababi</h4>
+                                                        <p className="text-red-800">{selectedArticle.reason}</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            
+                                            <div className="space-y-3">
+                                                <button className="w-full flex items-center justify-center py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
+                                                    <i className="fas fa-file-pdf mr-2"></i>
+                                                    Maqolani yuklab olish
+                                                </button>
+                                                
+                                                {activeTab === "pending" && (
+                                                    <>
+                                                        <button 
+                                                            onClick={() => {
+                                                                const reviewerId = 1; // Tanlangan redaktor IDsi
+                                                                handleAssignReviewer(selectedArticle.id, reviewerId);
+                                                            }}
+                                                            className="w-full flex items-center justify-center py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg"
+                                                        >
+                                                            <i className="fas fa-user-check mr-2"></i>
+                                                            Redaktorga yuborish
+                                                        </button>
+                                                        
+                                                        <button 
+                                                            onClick={() => handleRejectArticle(selectedArticle.id)}
+                                                            className="w-full flex items-center justify-center py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg"
+                                                        >
+                                                            <i className="fas fa-times mr-2"></i>
+                                                            Maqolani rad etish
+                                                        </button>
+                                                    </>
+                                                )}
+                                                
+                                                {activeTab === "accepted" && (
+                                                    <button className="w-full flex items-center justify-center py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg">
+                                                        <i className="fas fa-print mr-2"></i>
+                                                        Nashr qilish
+                                                    </button>
+                                                )}
+                                                
+                                                <button className="w-full flex items-center justify-center py-3 border border-gray-300 text-gray-700 hover:bg-gray-50 rounded-lg">
+                                                    <i className="fas fa-comment-alt mr-2"></i>
+                                                    Muallif bilan bog'lanish
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // 3. Redaktor paneli komponenti
+        function EditorPanel() {
+            const [activeTab, setActiveTab] = React.useState("assigned");
+            const [selectedArticle, setSelectedArticle] = React.useState(1);
+            const [message, setMessage] = React.useState("");
+            
+            // Statik maqolalar ma'lumotlari
+            const articles = {
+                assigned: [
+                    { id: 1, title: "Ta'limda sun'iy intellektning roli", author: "Aziz Alimov", journal: "Journal of Education", submitted: "2023-10-15", dueDate: "2023-10-25", status: "under_review" },
+                    { id: 2, title: "Matematik modellashtirish metodologiyasi", author: "Dilnoza Qodirova", journal: "Journal of Science", submitted: "2023-10-14", dueDate: "2023-10-24", status: "under_review" }
+                ],
+                revisions: [
+                    { id: 3, title: "IoT texnologiyalarining qishloq xo'jaligida qo'llanilishi", author: "Bobur Rahimov", journal: "Journal of Technology", submitted: "2023-10-05", revisionCount: 2, status: "revisions", authorResponse: true },
+                    { id: 4, title: "Adabiyotshunoslikda yangi yo'nalishlar", author: "Fotima Nuriddinova", journal: "Journal of Education", submitted: "2023-10-03", revisionCount: 1, status: "revisions", authorResponse: false }
+                ],
+                completed: [
+                    { id: 5, title: "Innovatsion pedagogik texnologiyalar", author: "Maftuna Karimova", journal: "Journal of Education", submitted: "2023-10-10", completedDate: "2023-10-20", status: "accepted", recommendation: "Qabul qilish" },
+                    { id: 6, title: "Kvant hisoblash asoslari", author: "Javohir Siddiqov", journal: "Journal of Technology", submitted: "2023-10-08", completedDate: "2023-10-18", status: "rejected", recommendation: "Rad etish" }
+                ]
+            };
+            
+            // Chat xabarlari (statik)
+            const chatMessages = [
+                { id: 1, sender: "editor", text: "Maqolangizni diqqat bilan ko'rib chiqdim. Umuniy qarashingiz juda yaxshi, lekin metodologiya bo'limini batafsilroq yozishingizni taklif qilaman.", time: "2023-10-16 14:30", read: true },
+                { id: 2, sender: "author", text: "Tavsiyangiz uchun rahmat. Metodologiya bo'limiga qo'shimcha 2 ta paragraf qo'shdim. Yangi versiyani yukladim.", time: "2023-10-17 09:15", read: true },
+                { id: 3, sender: "editor", text: "Yangi versiyani ko'rib chiqdim. Endi metodologiya ancha aniqroq bo'ldi. Amma adabiyotlar ro'yxatiga so'nggi 2 yildagi manbalarni qo'shishingizni tavsiya qilaman.", time: "2023-10-18 11:45", read: true },
+                { id: 4, sender: "author", text: "Adabiyotlar ro'yxatini yangiladim va 5 ta yangi manba qo'shdim. Boshqa takliflar bormi?", time: "2023-10-19 16:20", read: true },
+                { id: 5, sender: "editor", text: "Endi maqola juda yaxshi holatga keldi. Men uni qabul qilishni tavsiya qilaman. Yakuniy qaror admin paneliga yuborildi.", time: "2023-10-20 10:10", read: true }
+            ];
+            
+            const articleDetails = {
+                1: {
+                    id: 1,
+                    title: "Ta'limda sun'iy intellektning roli",
+                    author: "Aziz Alimov",
+                    email: "aziz.alimov@example.com",
+                    journal: "Journal of Education",
+                    abstract: "Ushbu maqolada zamonaviy ta'lim jarayonida sun'iy intellektning qo'llanilishi va uning samaradorligi o'rganilgan. Tadqiqotda 5 ta oliy ta'lim muassasasida sun'iy intellekt asosida yaratilgan platformalar tahli qilingan.",
+                    keywords: "sun'iy intellekt, ta'lim, texnologiya, innovatsiya",
+                    status: "under_review",
+                    submissionDate: "2023-10-15",
+                    dueDate: "2023-10-25",
+                    revisionCount: 0
+                },
+                3: {
+                    id: 3,
+                    title: "IoT texnologiyalarining qishloq xo'jaligida qo'llanilishi",
+                    author: "Bobur Rahimov",
+                    email: "bobur.rahimov@example.com",
+                    journal: "Journal of Technology",
+                    abstract: "Internet of Things (IoT) texnologiyalarining qishloq xo'jaligida qo'llanilishi va uning iqtisodiy samaradorligi tahli qilingan. Tadqiqot 2 yil davomida 3 ta fermer xo'jaligida olib borilgan.",
+                    keywords: "IoT, qishloq xo'jaligi, texnologiya, avtomatlashtirish",
+                    status: "revisions",
+                    submissionDate: "2023-10-05",
+                    dueDate: "2023-10-15",
+                    revisionCount: 2
+                }
+            };
+            
+            const currentArticle = articleDetails[selectedArticle];
+            
+            const handleSendMessage = () => {
+                if (message.trim()) {
+                    console.log("Xabar yuborildi:", message);
+                    // Bu yerda backendga so'rov yuboriladi
+                    setMessage("");
+                }
+            };
+            
+            const handleRecommendation = (articleId, recommendation) => {
+                console.log(`Maqola ${articleId} uchun ${recommendation} tavsiyasi yuborildi`);
+                alert(`Tavsiyangiz yuborildi! Admin paneliga xabar berildi.`);
+            };
+            
+            return (
+                <div className="min-h-screen bg-gray-50">
+                    {/* Sidebar */}
+                    <div className="flex">
+                        <div className="sidebar w-64 bg-white shadow-lg min-h-screen">
+                            <div className="p-6">
+                                <h1 className="text-2xl font-bold text-gray-800 mb-2">Redaktor Panel</h1>
+                                <p className="text-gray-600 text-sm">Olim Olimov</p>
+                                <p className="text-gray-500 text-xs">Pedagogika mutaxassisi</p>
+                            </div>
+                            
+                            <nav className="mt-6">
+                                <a href="#" className="flex items-center px-6 py-3 text-blue-600 bg-blue-50 border-r-4 border-blue-500">
+                                    <i className="fas fa-tasks mr-3"></i>
+                                    Mening vazifalarim
+                                </a>
+                                <a href="#" className="flex items-center px-6 py-3 text-gray-700 hover:bg-gray-100">
+                                    <i className="fas fa-history mr-3"></i>
+                                    Tarix
+                                </a>
+                                <a href="#" className="flex items-center px-6 py-3 text-gray-700 hover:bg-gray-100">
+                                    <i className="fas fa-envelope mr-3"></i>
+                                    Xabarlar
+                                </a>
+                                <a href="#" className="flex items-center px-6 py-3 text-gray-700 hover:bg-gray-100">
+                                    <i className="fas fa-chart-line mr-3"></i>
+                                    Faollik
+                                </a>
+                            </nav>
+                            
+                            <div className="p-6 mt-8">
+                                <div className="bg-blue-50 p-4 rounded-lg">
+                                    <h3 className="font-medium text-blue-800 mb-2">Statistika</h3>
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between">
+                                            <span className="text-sm text-gray-700">Jami maqolalar</span>
+                                            <span className="font-medium">24</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-sm text-gray-700">Hozirgi yuk</span>
+                                            <span className="font-medium">2</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-sm text-gray-700">O'rtacha vaqt</span>
+                                            <span className="font-medium">9 kun</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div className="absolute bottom-0 w-64 p-6 border-t">
+                                <div className="flex items-center">
+                                    <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center mr-3">
+                                        <i className="fas fa-user-edit text-purple-600"></i>
+                                    </div>
+                                    <div>
+                                        <p className="font-medium text-gray-800">Olim Olimov</p>
+                                        <p className="text-xs text-gray-500">Redaktor</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        {/* Asosiy kontent */}
+                        <div className="flex-1 p-8">
+                            <div className="mb-8">
+                                <h2 className="text-3xl font-bold text-gray-800">Maqolalarni ko'rib chiqish</h2>
+                                <p className="text-gray-600">Sizga tayinlangan maqolalarni baholang va mualliflar bilan muloqot qiling</p>
+                            </div>
+                            
+                            {/* Tablar */}
+                            <div className="mb-8 border-b">
+                                <div className="flex space-x-8">
+                                    {[
+                                        { id: "assigned", label: "Tayinlangan", count: articles.assigned.length },
+                                        { id: "revisions", label: "Qayta ko'rib chiqish", count: articles.revisions.length },
+                                        { id: "completed", label: "Yakunlangan", count: articles.completed.length }
+                                    ].map(tab => (
+                                        <button
+                                            key={tab.id}
+                                            onClick={() => setActiveTab(tab.id)}
+                                            className={`pb-3 px-1 text-gray-600 hover:text-gray-900 ${activeTab === tab.id ? 'tab-active' : ''}`}
+                                        >
+                                            {tab.label}
+                                            <span className={`ml-2 px-2 py-1 text-xs rounded-full ${activeTab === tab.id ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}`}>
+                                                {tab.count}
+                                            </span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                                {/* Maqolalar ro'yxati */}
+                                <div className="lg:col-span-1">
+                                    <div className="bg-white rounded-xl shadow-md overflow-hidden">
+                                        <div className="p-6">
+                                            <h3 className="text-lg font-semibold text-gray-800 mb-4">
+                                                {activeTab === "assigned" && "Tayinlangan maqolalar"}
+                                                {activeTab === "revisions" && "Qayta ko'rib chiqish kerak"}
+                                                {activeTab === "completed" && "Yakunlangan maqolalar"}
+                                            </h3>
+                                            
+                                            <div className="space-y-4">
+                                                {articles[activeTab === "revisions" ? "revisions" : 
+                                                         activeTab === "completed" ? "completed" : "assigned"].map(article => (
+                                                    <div 
+                                                        key={article.id} 
+                                                        className={`article-card p-4 border rounded-lg cursor-pointer ${selectedArticle === article.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200'}`}
+                                                        onClick={() => setSelectedArticle(article.id)}
+                                                    >
+                                                        <div className="flex justify-between items-start">
+                                                            <div>
+                                                                <h4 className="font-medium text-gray-800 mb-1">{article.title}</h4>
+                                                                <p className="text-sm text-gray-600 mb-2">{article.author} | {article.journal}</p>
+                                                                <div className="flex items-center">
+                                                                    <span className="text-xs text-gray-500">Yuborilgan: {article.submitted}</span>
+                                                                    {article.dueDate && (
+                                                                        <span className="text-xs text-amber-600 ml-3">Muddat: {article.dueDate}</span>
+                                                                    )}
+                                                                    {article.completedDate && (
+                                                                        <span className="text-xs text-green-600 ml-3">Yakunlangan: {article.completedDate}</span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex flex-col items-end">
+                                                                {article.status === "under_review" && (
+                                                                    <span className="status-badge status-under-review mb-2">Ko'rib chiqilmoqda</span>
+                                                                )}
+                                                                {article.status === "revisions" && (
+                                                                    <span className="status-badge status-revisions mb-2">{article.revisionCount} marta</span>
+                                                                )}
+                                                                {article.authorResponse && (
+                                                                    <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">Muallif javob berdi</span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                {/* Tanlangan maqola ma'lumotlari va chat */}
+                                <div className="lg:col-span-2">
+                                    {currentArticle ? (
+                                        <div className="bg-white rounded-xl shadow-md overflow-hidden h-full flex flex-col">
+                                            <div className="p-6 border-b">
+                                                <div className="flex justify-between items-start mb-4">
+                                                    <div>
+                                                        <h3 className="text-xl font-semibold text-gray-800">{currentArticle.title}</h3>
+                                                        <p className="text-gray-600">{currentArticle.author} • {currentArticle.journal}</p>
+                                                    </div>
+                                                    <div className="flex space-x-2">
+                                                        <button className="text-blue-600 hover:text-blue-800 p-2">
+                                                            <i className="fas fa-download"></i>
+                                                        </button>
+                                                        <button className="text-gray-600 hover:text-gray-800 p-2">
+                                                            <i className="fas fa-print"></i>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                                                    <div className="bg-gray-50 p-3 rounded-lg">
+                                                        <p className="text-xs text-gray-500">Holati</p>
+                                                        <p className="font-medium">
+                                                            {currentArticle.status === "under_review" ? "Ko'rib chiqilmoqda" : 
+                                                             currentArticle.status === "revisions" ? "Tahrirlash kerak" : "Noma'lum"}
+                                                        </p>
+                                                    </div>
+                                                    <div className="bg-gray-50 p-3 rounded-lg">
+                                                        <p className="text-xs text-gray-500">Yuborilgan sana</p>
+                                                        <p className="font-medium">{currentArticle.submissionDate}</p>
+                                                    </div>
+                                                    <div className="bg-gray-50 p-3 rounded-lg">
+                                                        <p className="text-xs text-gray-500">Muddat</p>
+                                                        <p className="font-medium">{currentArticle.dueDate}</p>
+                                                    </div>
+                                                    <div className="bg-gray-50 p-3 rounded-lg">
+                                                        <p className="text-xs text-gray-500">Tahrirlashlar</p>
+                                                        <p className="font-medium">{currentArticle.revisionCount}</p>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div className="mb-4">
+                                                    <h4 className="font-medium text-gray-700 mb-2">Annotatsiya</h4>
+                                                    <p className="text-gray-800">{currentArticle.abstract}</p>
+                                                </div>
+                                                
+                                                <div className="mb-4">
+                                                    <h4 className="font-medium text-gray-700 mb-2">Kalit so'zlar</h4>
+                                                    <p className="text-gray-800">{currentArticle.keywords}</p>
+                                                </div>
+                                                
+                                                {activeTab !== "completed" && (
+                                                    <div className="flex space-x-3 mt-4">
+                                                        <button 
+                                                            onClick={() => handleRecommendation(currentArticle.id, "accept")}
+                                                            className="flex-1 bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg font-medium"
+                                                        >
+                                                            <i className="fas fa-check mr-2"></i>
+                                                            Qabul qilishni tavsiya qilish
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => handleRecommendation(currentArticle.id, "revisions")}
+                                                            className="flex-1 bg-yellow-500 hover:bg-yellow-600 text-white py-3 rounded-lg font-medium"
+                                                        >
+                                                            <i className="fas fa-edit mr-2"></i>
+                                                            Qayta tahrirlash
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => handleRecommendation(currentArticle.id, "reject")}
+                                                            className="flex-1 bg-red-600 hover:bg-red-700 text-white py-3 rounded-lg font-medium"
+                                                        >
+                                                            <i className="fas fa-times mr-2"></i>
+                                                            Rad etish
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            
+                                            {/* Chat qismi */}
+                                            <div className="flex-1 p-6 bg-gray-50 flex flex-col">
+                                                <h4 className="font-medium text-gray-800 mb-4">Muallif bilan muloqot</h4>
+                                                
+                                                {/* Chat xabarlari */}
+                                                <div className="flex-1 overflow-y-auto mb-4 space-y-3">
+                                                    {chatMessages.map(msg => (
+                                                        <div key={msg.id} className={`chat-bubble ${msg.sender === 'author' ? 'user' : 'editor'}`}>
+                                                            <div className="flex justify-between items-start mb-1">
+                                                                <span className="font-medium text-xs">
+                                                                    {msg.sender === 'author' ? currentArticle.author : 'Siz (Redaktor)'}
+                                                                </span>
+                                                                <span className="text-xs text-gray-500">{msg.time}</span>
+                                                            </div>
+                                                            <p>{msg.text}</p>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                                
+                                                {/* Xabar yuborish formasi */}
+                                                <div className="border-t pt-4">
+                                                    <div className="flex space-x-3">
+                                                        <input
+                                                            type="text"
+                                                            value={message}
+                                                            onChange={(e) => setMessage(e.target.value)}
+                                                            onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                                                            placeholder="Xabaringizni yozing..."
+                                                            className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                        />
+                                                        <button
+                                                            onClick={handleSendMessage}
+                                                            className="bg-blue-600 hover:bg-blue-700 text-white py-3 px-6 rounded-lg"
+                                                        >
+                                                            <i className="fas fa-paper-plane"></i>
+                                                        </button>
+                                                    </div>
+                                                    <p className="text-xs text-gray-500 mt-2">
+                                                        Xabarlar to'g'ridan-to'g'ri muallifga yuboriladi. Izohlaringiz aniq va tushunarli bo'lishi kerak.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="bg-white rounded-xl shadow-md p-8 text-center">
+                                            <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
+                                                <i className="fas fa-file-alt text-gray-400 text-2xl"></i>
+                                            </div>
+                                            <h3 className="text-lg font-medium text-gray-700 mb-2">Maqola tanlanmagan</h3>
+                                            <p className="text-gray-500">Ko'rib chiqish uchun chapdagi ro'yxatdan maqolani tanlang</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Asosiy App komponenti
+        function App() {
+            const [currentPage, setCurrentPage] = React.useState("user");
+            
+            return (
+                <div>
+                    {/* Navigation */}
+                    <header className="bg-white shadow-sm border-b">
+                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                            <div className="flex justify-between items-center h-16">
+                                <div className="flex items-center">
+                                    <div className="flex-shrink-0">
+                                        <i className="fas fa-book-open text-blue-600 text-2xl"></i>
+                                    </div>
+                                    <div className="hidden md:block ml-6">
+                                        <div className="flex items-baseline space-x-4">
+                                            <button
+                                                onClick={() => setCurrentPage("user")}
+                                                className={`px-3 py-2 rounded-md text-sm font-medium ${currentPage === "user" ? 'bg-blue-100 text-blue-700' : 'text-gray-700 hover:text-gray-900'}`}
+                                            >
+                                                Foydalanuvchi
+                                            </button>
+                                            <button
+                                                onClick={() => setCurrentPage("admin")}
+                                                className={`px-3 py-2 rounded-md text-sm font-medium ${currentPage === "admin" ? 'bg-blue-100 text-blue-700' : 'text-gray-700 hover:text-gray-900'}`}
+                                            >
+                                                Admin Panel
+                                            </button>
+                                            <button
+                                                onClick={() => setCurrentPage("editor")}
+                                                className={`px-3 py-2 rounded-md text-sm font-medium ${currentPage === "editor" ? 'bg-blue-100 text-blue-700' : 'text-gray-700 hover:text-gray-900'}`}
+                                            >
+                                                Redaktor Panel
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex items-center">
+                                    <span className="text-sm text-gray-500 mr-4 hidden md:block">
+                                        Jurnal boshqaruv tizimi demo
+                                    </span>
+                                    <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium">
+                                        <i className="fas fa-sign-in-alt mr-2"></i>
+                                        Kirish
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </header>
+                    
+                    <main>
+                        {currentPage === "user" && <UserSubmitArticle />}
+                        {currentPage === "admin" && <AdminPanel />}
+                        {currentPage === "editor" && <EditorPanel />}
+                    </main>
+                    
+                    {/* Footer */}
+                    <footer className="bg-gray-800 text-white mt-12">
+                        <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                                <div>
+                                    <h3 className="text-lg font-semibold mb-4">Academic Journal System</h3>
+                                    <p className="text-gray-300 text-sm">
+                                        Ilmiy maqolalarni boshqarish va nashr etishning yagona platformasi.
+                                        Barcha jurnallar va maqolalar markaziy bazada saqlanadi.
+                                    </p>
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-semibold mb-4">Jurnallar</h3>
+                                    <ul className="space-y-2 text-sm text-gray-300">
+                                        <li>Journal of Education</li>
+                                        <li>Journal of Science</li>
+                                        <li>Journal of Technology</li>
+                                        <li>Medical Research Journal</li>
+                                    </ul>
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-semibold mb-4">Aloqa</h3>
+                                    <ul className="space-y-2 text-sm text-gray-300">
+                                        <li><i className="fas fa-envelope mr-2"></i> support@journalsystem.uz</li>
+                                        <li><i className="fas fa-phone mr-2"></i> +998 71 123 45 67</li>
+                                        <li><i className="fas fa-map-marker-alt mr-2"></i> Toshkent sh., Universitet ko'chasi</li>
+                                    </ul>
+                                </div>
+                            </div>
+                            <div className="border-t border-gray-700 mt-8 pt-6 text-center text-sm text-gray-400">
+                                <p>&copy; 2023 Academic Journal Management System. Barcha huquqlar himoyalangan.</p>
+                            </div>
+                        </div>
+                    </footer>
+                </div>
+            );
+        }
+
+        // ReactDOM render
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
